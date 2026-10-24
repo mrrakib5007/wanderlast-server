@@ -203,6 +203,132 @@ app.post("/destination", async (req, res) => {
   }
 });
 
+app.patch("/destination/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reqBody = req.body;
+
+    // 1. Check ID validity
+    if (!id || !ObjectId.isValid(id)) {
+      return res.status(400).send({
+        error: true,
+        message: "Invalid destination ID format!",
+      });
+    }
+
+    // 2. Validate request body presence
+    if (
+      !reqBody ||
+      typeof reqBody !== "object" ||
+      Array.isArray(reqBody) ||
+      Object.keys(reqBody).length === 0
+    ) {
+      return res.status(400).send({
+        error: true,
+        message: "Update data is required!",
+      });
+    }
+
+    // 3. Separate immutable fields and validate provided fields
+    const { _id, ...updatePayload } = reqBody;
+    const updateDoc = {};
+
+    for (const [field, value] of Object.entries(updatePayload)) {
+      if (addDestinationDataRegex[field]) {
+        const stringValue = String(value ?? "").trim();
+
+        if (stringValue === "") {
+          return res.status(400).send({
+            error: true,
+            message: `${field} cannot be empty!`,
+          });
+        }
+
+        if (!addDestinationDataRegex[field].regex.test(stringValue)) {
+          return res.status(400).send({
+            error: true,
+            message: addDestinationDataRegex[field].message,
+          });
+        }
+
+        updateDoc[field] = value;
+      }
+    }
+
+    if (Object.keys(updateDoc).length === 0) {
+      return res.status(400).send({
+        error: true,
+        message: "No valid fields provided to update!",
+      });
+    }
+
+    // 4. Update in Database
+    const destinationsCollection = (await getDatabase()).collection("destinations");
+    const filter = { _id: new ObjectId(id) };
+
+    const result = await destinationsCollection.updateOne(filter, {
+      $set: updateDoc,
+    });
+
+    if (result.matchedCount === 0) {
+      return res.status(404).send({
+        error: true,
+        message: "Destination not found!",
+      });
+    }
+
+    return res.status(200).send({
+      error: false,
+      message: "Destination package updated successfully.",
+      data: updateDoc,
+    });
+  } catch (error) {
+    console.error("Update destination error:", error);
+
+    return res.status(500).send({
+      error: true,
+      message: "Something went wrong!",
+    });
+  }
+});
+
+app.delete("/destination/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || !ObjectId.isValid(id)) {
+      return res.status(400).send({
+        error: true,
+        message: "Invalid destination ID format!",
+      });
+    }
+
+    const destinationsCollection = (await getDatabase()).collection("destinations");
+    const query = { _id: new ObjectId(id) };
+
+    const result = await destinationsCollection.deleteOne(query);
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({
+        error: true,
+        message: "Destination not found!",
+      });
+    }
+
+    return res.status(200).send({
+      error: false,
+      message: "Destination package deleted successfully.",
+    });
+  } catch (error) {
+    console.error("Delete destination error:", error);
+
+    return res.status(500).send({
+      error: true,
+      message: "Something went wrong!",
+    });
+  }
+});
+
 // health check api
 app.get("/health", (req, res) => {
   res.status(200).send({ error: false, message: "Server is online" });
