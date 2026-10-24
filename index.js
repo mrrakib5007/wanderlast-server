@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -76,7 +76,7 @@ export async function connectToMongoDB() {
 
 // Destination APIs
 // Get All Destination
-app.get("/destination", async (req, res) => {
+app.get("/destinations", async (req, res) => {
   try {
     const destinationsCollection = (await getDatabase()).collection(
       "destinations",
@@ -89,6 +89,51 @@ app.get("/destination", async (req, res) => {
     });
   } catch (error) {
     console.error("Get destinations error:", error);
+    return res.status(500).send({
+      error: true,
+      message: "Something went wrong!",
+    });
+  }
+});
+
+// Get single destination
+app.get("/destination/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate MongoDB ObjectId
+    const idRegex = /^[a-f\d]{24}$/i;
+
+    if (!idRegex.test(id)) {
+      return res.status(400).send({
+        error: true,
+        message: "Invalid destination ID!",
+      });
+    }
+
+    const destinationsCollection = (await getDatabase()).collection(
+      "destinations"
+    );
+
+    const result = await destinationsCollection.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!result) {
+      return res.status(404).send({
+        error: true,
+        message: "Destination not found!",
+      });
+    }
+
+    return res.status(200).send({
+      error: false,
+      message: "Destination data found",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Get destination error:", error);
+
     return res.status(500).send({
       error: true,
       message: "Something went wrong!",
