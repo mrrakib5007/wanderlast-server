@@ -47,36 +47,53 @@ const addDestinationDataRegex = {
   },
 };
 
-const client = new MongoClient(process.env.MONGODB_URI);
+let client;
+let connectionPromise;
 
-export async function connectToMongoDB() {
-  try {
-    await client.connect();
-    console.log("You successfully connected to MongoDB!");
-
-    return client;
-  } catch (err) {
-    console.dir(err);
+async function getDatabase() {
+  if (!process.env.MONGODB_URI) {
+    throw new Error("MONGODB_URI environment variable is required.");
   }
+
+  if (!connectionPromise) {
+    client = new MongoClient(process.env.MONGODB_URI);
+    connectionPromise = client.connect().catch((error) => {
+      connectionPromise = undefined;
+      client = undefined;
+      throw error;
+    });
+  }
+
+  await connectionPromise;
+  return client.db("wanderlast_db");
 }
 
-const mongodbClient = await connectToMongoDB();
-// Datebase
-const db = mongodbClient.db("wanderlast_db");
-// Collections
-const usersCollection = db.collection("users");
-const destinationsCollection = db.collection("destinations");
+export async function connectToMongoDB() {
+  await getDatabase();
+  console.log("You successfully connected to MongoDB!");
+  return client;
+}
 
 // Destination APIs
+// Get All Destination
 app.get("/destination", async (req, res) => {
-  const result = await destinationsCollection.find({}).toArray();
-  res
-    .status(200)
-    .send({
+  try {
+    const destinationsCollection = (await getDatabase()).collection(
+      "destinations",
+    );
+    const result = await destinationsCollection.find({}).toArray();
+    return res.status(200).send({
       error: false,
       message: `${result.length} Destination data found`,
       data: result,
     });
+  } catch (error) {
+    console.error("Get destinations error:", error);
+    return res.status(500).send({
+      error: true,
+      message: "Something went wrong!",
+    });
+  }
 });
 
 app.post("/destination", async (req, res) => {
@@ -115,6 +132,9 @@ app.post("/destination", async (req, res) => {
       }
     }
 
+    const destinationsCollection = (await getDatabase()).collection(
+      "destinations",
+    );
     const result = await destinationsCollection.insertOne(reqBody);
     if (!result.insertedId) {
       return res.status(500).send({
@@ -122,11 +142,10 @@ app.post("/destination", async (req, res) => {
         message: "Failed to add destination. Please try again.",
       });
     }
-
-    // All validations passed
+    
     res.status(201).send({
       error: false,
-      message: "Destination data validated successfully!",
+      message: "Your travel package has been added.",
       data: reqBody,
     });
   } catch (error) {
@@ -141,9 +160,13 @@ app.post("/destination", async (req, res) => {
 
 // health check api
 app.get("/health", (req, res) => {
-  (res.status(200), send({ error: false, message: "Server is online" }));
+  res.status(200).send({ error: false, message: "Server is online" });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on PORT: ${PORT}`);
-});
+export default app;
+
+if (process.env.VERCEL !== "1") {
+  app.listen(PORT, () => {
+    console.log(`Server is running on PORT: ${PORT}`);
+  });
+}
